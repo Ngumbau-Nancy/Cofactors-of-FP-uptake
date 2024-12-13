@@ -1,6 +1,7 @@
-setwd("/Users/integ/Dropbox/Dama/Longitudinal")
+setwd("C:/Users/integ/OneDrive/New Folder/Github/Cofactors-of-FP-uptake")
 rm (list = ls())
-#Running packages
+
+#Load packages
 library(tidyverse)
 library(haven)
 library(magrittr)
@@ -13,205 +14,15 @@ library(wesanderson)
 library(lubridate)
 library(summarytools)
 library(readxl)
+library(ggpubr)
+library(survminer)
 
-
+"C:/Users/integ/OneDrive/New Folder/Github/Cofactors-of-FP-uptake/cofactors_fp.R"
 #Loading the datasets
-Baseline<-read_excel("C:/Users/integ/Dropbox/Dama/Longitudinal/cofactors_baseline.xlsx")
-fpdata_sae_ltfp<-read_excel("C:/Users/integ/Dropbox/Dama/Longitudinal/fpdata_sae_ltfp.xlsx")
+Baseline<-read_excel("cofactors_baseline.xlsx")
+fpdata_sae_ltfp<-read_excel("fpdata_sae_ltfp.xlsx")
 
-table(fpdata$repeat_preg)
-table(fpdata_sae$repeat_preg)
 table(fpdata_sae_ltfp$repeat_preg)
-
-summary(age_enr_cof)
-table(fpdata_sae_ltfp$sa_resumesex)
-
-#participants to censor in between visits
-df_wide<- df_wide%>%
-  mutate(total1 = case_when(total<'1'~'0',
-                            total>='1'~'1'))
-
-df_wide1<-df_wide%>%
-  subset(total1=='1')
-
-df_wide2<-df_wide1%>%
-  subset(month9=='0')
-duplicated_values <- df_wide2 [duplicated(df_wide2 $record_id), ]
-print(duplicated_values)
-
-#dropped at week6
-df_wide2<- df_wide2%>%
-  mutate(week6_censor = ifelse(rowSums(.[,c(4:5)]==0)>1, 'yes', 'no'))
-df_wide2<- df_wide2%>%
-  mutate(week6_censor = ifelse(rowSums(.[,c("weeks14","months6")]==0)>1, 'yes', 'no'))
-dropped_wk6<- df_wide2%>%
-  subset(week6_censor=='yes')
-
-#dropped at week14
-df_wide_14wks<- df_wide2%>%
-  subset(weeks14=='1')
-df_wide_14wks<- df_wide_14wks%>%
-  mutate(week14_censor = ifelse(df_wide_14wks$months6==0, 'yes', 'no'))
-df_wide_14wks1<- df_wide_14wks%>%
-  subset(week14_censor=='yes')
-
-#dropped at month6
-dropped_month6<-df_wide2%>%
-  subset(months6=='1')
-
-#came for all visits but did not initiate
-df_month9<- df_wide%>%
-  subset(total=='4')
-
-#maternal deaths
-mat<-fpdata_sae_ltfp%>%
-  filter(sae_maternal_death_cof=="1")
-mat1<-mat%>%
-  select(record_id,clt_ptid,clt_visit,sae_maternal_death_cof)
-
-#molar preg
-molar<-fpdata_sae_ltfp%>%
-  filter(sae_molarpreg_cof=="1")
-
-molar1<-molar%>%
-  select(record_id,clt_ptid,clt_visit,sae_molarpreg_cof)
-
-table(fpdata_sae_ltfp$clt_visit,fpdata_sae_ltfp$sae_maternal_death_cof)
-maternal_death<-fpdata_sae_ltfp%>%
-  filter(sae_maternal_death_cof=="1")
-maternal_death<-maternal_death%>%
-  group_by(record_id) %>%
-  summarise(first_maternal_death= clt_visit[which.max(sae_maternal_death_cof)])
-summarytools::freq(maternal_death$first_maternal_death)
-
-#According to study visits  
-Baseline<-fpdata_sae_ltfp%>%
-  filter(redcap_event_name =="enrollment_arm_1"|redcap_event_name=="enrollment_arm_2")
-
-#pregnancy intention
-#edit sa_pregcircumstothsp
-table(fpdata_sae_ltfp$sa_pregcircumst, fpdata_sae_ltfp$redcap_event_name)
-fpdata_sae_ltfp <-fpdata_sae_ltfp %>%
-  mutate(other_pregcircumst=sa_pregcircumstothsp)
-
-#replace empty cells in other_pregcircumst with 999
-fpdata_sae_ltfp$other_pregcircumst <- replace(fpdata_sae_ltfp$other_pregcircumst, fpdata_sae_ltfp$other_pregcircumst == "", 999)
-
-#replace 'child died' with NA, 999 with NA and anything else with No
-fpdata_sae_ltfp$other_pregcircumst<- ifelse(fpdata_sae_ltfp$other_pregcircumst == "Child died", NA,
-                                            ifelse(fpdata_sae_ltfp$other_pregcircumst == 999, NA, 
-                                                   ifelse(is.na(fpdata_sae_ltfp$other_pregcircumst), NA, "No")))
-
-
-table(fpdata$sa_pregcircumst)
-table(fpdata_sae_ltfp$sa_pregcircumst)
-table(fpdata_sae_ltfp$other_pregcircumst)
-
-#Pregnancy intention
-
-#new dataframe with blank preg intention
-livebirth <- fpdata_sae_ltfp %>% group_by(record_id) %>% tally() %>% select(record_id)
-livebirth$sa_pregcircumst <- NA
-livebirth$sa_pregcircumstothsp <- NA
-
-
-## pts with data at six weeks
-six_wk_pp <- fpdata_sae_ltfp %>% 
-  filter(redcap_event_name=="fup_6_wk_pp_arm_1"|redcap_event_name=="fup_6_wk_pp_arm_2")
-temp <- six_wk_pp %>% select(record_id, sa_pregcircumst, sa_pregcircumstothsp) #just find record id and answer to preg intention q
-temp <- temp %>% filter(!is.na(sa_pregcircumst)) #2290 women answered at 6 weeks
-livebirth <- left_join(livebirth, temp, by=c("record_id")) %>% 
-  mutate(sa_pregcircumst = coalesce(sa_pregcircumst.x, sa_pregcircumst.y),
-         sa_pregcircumstothsp = coalesce(sa_pregcircumstothsp.x, sa_pregcircumstothsp.y)) %>% 
-  select(record_id, sa_pregcircumst, sa_pregcircumstothsp)
-table(livebirth$sa_pregcircumst, useNA="always")
-
-## pts with missing at 6 weeks, but answered at 14 weeks
-still_missing <- livebirth %>% filter(is.na(sa_pregcircumst))
-fortin_wk_pp <- fpdata_sae_ltfp %>% 
-  filter(redcap_event_name=="fup_14_wk_pp_arm_1"|redcap_event_name=="fup_14_wks_pp_arm_2") %>% 
-  filter(record_id %in% still_missing$record_id)
-temp <- fortin_wk_pp %>% select(record_id, sa_pregcircumst, sa_pregcircumstothsp) #just find record id and answer to preg intention q
-temp <- temp %>% filter(!is.na(sa_pregcircumst)) #2290 women answered at 6 weeks
-livebirth <- left_join(livebirth, temp, by=c("record_id")) %>% 
-  mutate(sa_pregcircumst = coalesce(sa_pregcircumst.x, sa_pregcircumst.y),
-         sa_pregcircumstothsp = coalesce(sa_pregcircumstothsp.x, sa_pregcircumstothsp.y)) %>% 
-  select(record_id, sa_pregcircumst, sa_pregcircumstothsp)
-table(livebirth$sa_pregcircumst, useNA="always")
-
-## pts with missing at 6 weeks and 14 weeks, but answered at 6 months
-still_missing <- livebirth %>% filter(is.na(sa_pregcircumst))
-six_mo_pp <- fpdata_sae_ltfp %>% 
-  filter(redcap_event_name=="fup_6_mo_pp_arm_1"|redcap_event_name=="fup_6_mo_pp_arm_2") %>% 
-  filter(record_id %in% still_missing$record_id)
-temp <- six_mo_pp %>% select(record_id, sa_pregcircumst, sa_pregcircumstothsp) #just find record id and answer to preg intention q
-temp <- temp %>% filter(!is.na(sa_pregcircumst)) #2290 women answered at 6 weeks
-livebirth <- left_join(livebirth, temp, by=c("record_id")) %>% 
-  mutate(sa_pregcircumst = coalesce(sa_pregcircumst.x, sa_pregcircumst.y),
-         sa_pregcircumstothsp = coalesce(sa_pregcircumstothsp.x, sa_pregcircumstothsp.y)) %>% 
-  select(record_id, sa_pregcircumst, sa_pregcircumstothsp)
-table(livebirth$sa_pregcircumst, useNA="always")
-
-## pts with missing at 6 weeks and 14 weeks and 6 months, but answered at 9 months
-still_missing <- livebirth %>% filter(is.na(sa_pregcircumst))
-nine_mo_pp <- fpdata_sae_ltfp %>% 
-  filter(redcap_event_name=="fup_9_mo_pp_arm_2"|redcap_event_name=="fup9_mo_pp_arm_1") %>% 
-  filter(record_id %in% still_missing$record_id)
-temp <- nine_mo_pp %>% select(record_id, sa_pregcircumst, sa_pregcircumstothsp) #just find record id and answer to preg intention q
-temp <- temp %>% filter(!is.na(sa_pregcircumst)) #2290 women answered at 6 weeks
-livebirth <- left_join(livebirth, temp, by=c("record_id")) %>% 
-  mutate(sa_pregcircumst = coalesce(sa_pregcircumst.x, sa_pregcircumst.y),
-         sa_pregcircumstothsp = coalesce(sa_pregcircumstothsp.x, sa_pregcircumstothsp.y)) %>% 
-  select(record_id, sa_pregcircumst, sa_pregcircumstothsp)
-table(livebirth$sa_pregcircumst, useNA="always")
-
-table(livebirth$sa_pregcircumstothsp)
-
-livebirth <- livebirth %>% 
-  mutate(sa_pregcircumst = ifelse(sa_pregcircumst==99, 5, sa_pregcircumst))
-table(livebirth$sa_pregcircumst)
-livebirth$sa_pregcircumst<-as.factor(livebirth$sa_pregcircumst)
-livebirth<-livebirth%>% 
-  mutate(intention_pregnancy=recode(sa_pregcircumst,
-                                    "1"="Intended", 
-                                    "2"="Ambivalent",
-                                    "3"="Ambivalent",
-                                    "4"="Ambivalent",
-                                    "5"="No"))
-table(livebirth$preg_intent)
-
-#leftjoin the pregnancy intention
-livebirth_clean <- livebirth %>% select(record_id, intention_pregnancy)
-fpdata_sae_ltfp<-fpdata_sae_ltfp%>%
-  left_join((livebirth_clean), by='record_id')
-Baseline<-Baseline%>%
-  left_join((livebirth_clean), by='record_id')
-
-
-###merge total_combine_ord with baseline
-summarytools::freq(Baseline$intention_pregnancy)
-
-fpdata_sae_ltfp$age_enr_cof<-round(fpdata_sae_ltfp$age_enr_cof, digits = 1)
-table(fpdata_sae_ltfp$redcap_event_name)
-
-six_wk_pp <- fpdata_sae_ltfp %>% 
-  filter(redcap_event_name=="fup_6_wk_pp_arm_1"|redcap_event_name=="fup_6_wk_pp_arm_2")
-fortin_wk_pp <- fpdata_sae_ltfp %>% 
-  filter(redcap_event_name=="fup_14_wk_pp_arm_1"|redcap_event_name=="fup_14_wks_pp_arm_2")
-six_mnth_pp<- fpdata_sae_ltfp%>% 
-  filter(redcap_event_name=="fup_6_mo_pp_arm_1"|redcap_event_name=="fup_6_mo_pp_arm_2")
-nine_mnth_fup <- fpdata_sae_ltfp%>% 
-  filter(redcap_event_name=="fup9_mo_pp_arm_1"|redcap_event_name=="fup_9_mo_pp_arm_2")
-trans_to_pnc <- fpdata_sae_ltfp%>% 
-  filter(redcap_event_name=="transition_to_pnc_arm_1"|redcap_event_name=="transition_to_pnc_arm_2")
-
-#table1
-fpdata_sae_ltfp$age_enr_cof<-round(fpdata_sae_ltfp$age_enr_cof, digits = 1)
-table(fpdata_sae_ltfp$redcap_event_name, fpdata_sae_ltfp$sa_resumesex)
-table(fpdata_sae_ltfp$modern_fp, fpdata_sae_ltfp$redcap_event_name)
-table(fpdata_sae_ltfp$Facility)
-
-write_xlsx(Baseline, "C:/Users/integ/Dropbox/Dama/Longitudinal/cofactors_baseline.xlsx")
 ###BEGIN ANALYSIS
 missing_age<-Baseline%>%
   filter(is.na(age_groups_cof))
@@ -238,7 +49,6 @@ summarytools::freq(Baseline$hx_stillbirth)
 liv_age<-living_child%>%filter(number_living!="No living child")
 summarytools::freq(living_child$childage_groups)
 summarytools::freq(Baseline$intention_pregnancy)
-#summarytools::freq(Baseline$pre_pregnant_enr_cof)
 
 summarytools::freq(Baseline$pc_current)
 part<-Baseline%>%filter(pc_current=="Yes")
@@ -333,11 +143,8 @@ summarytools::freq(resume$first_resume)
 
 summary(resume$first_resume)
 
-#modern1<-fpdata%>%
-#select(record_id,clt_visit,modern_fp)
-
 modern_c<-fpdata_sae_ltfp%>%
-  select(record_id,clt_visit,modern_fp,sa_resumesex, sa_nonpermbc___7,
+  dplyr::select(record_id,clt_visit,modern_fp,sa_resumesex, sa_nonpermbc___7,
          sa_nonpermbc___8, sa_nonpermbc___9, sa_nonpermbc___10, 
          sa_nonpermbc___11, sa_nonpermbc___12, sa_nonpermbc___13)
 
@@ -413,13 +220,6 @@ kaplan_order$first_FP<-as.numeric(kaplan_order$first_FP)
 table(kaplan_order$first_FP)
 
 
-#length(kaplan_order$clt_visit)
-#Surv(kaplan_order$clt_visit,kaplan_order$fp_use)
-##survfit(Surv(kaplan_order$clt_visit,kaplan_order$fp_use)~1)
-#summary(survfit(Surv(kaplan_order$clt_visit,kaplan_order$fp_use)~1))
-#fit2<-plot(survfit(Surv(kaplan_order$clt_visit,as.numeric(kaplan_order$fp_use))~0,conf.type="none"),xlab="Visit",xlim=c(100,105, by=100),ylab="FP uptake")
-#fit2
-
 # adding suffix _1 to column names in kaplan_order to make them diffrent
 colnames(kaplan_order) <- paste(colnames(kaplan_order),"ord",sep="_")
 kaplan_order<-kaplan_order%>%
@@ -430,7 +230,7 @@ kaplan_order<-kaplan_order%>%
 
 ### *repeat pregnancy*
 modern_preg<-fpdata%>%
-  select(record_id,clt_visit,modern_fp)
+ dplyr:: select(record_id,clt_visit,modern_fp)
 table(modern_c$clt_visit)
 table(modern$first_FP)
 
@@ -518,11 +318,10 @@ duplicated_fp_reg <- modern_fp_preg_1[duplicated(modern_fp_preg_1$record_id), ]
 
 ###person time
 survival_data_fp_time<-survival_data_fp|>
-  select(record_id, visit1)
+  dplyr::select(record_id, visit1)
 table(survival_data_fp_time$visit1)
 survival_data_fp_time$visit1<-as.numeric(survival_data_fp_time$visit1)
 
-#write_xlsx(survival_data_fp_time, "/Users/damariskimonge/Dropbox/Dama/Longitudinal/preg data.xlsx")
 
 b<-sum(survival_data_fp_time$visit1)
 
@@ -532,7 +331,6 @@ preg_fp_check<-nancy_prima_longitudinal_071122|>
   filter(record_id==13747057309)|>
   dplyr::select(record_id,redcap_event_name,io_secondpreg,modern_fp)
 
-#write_xlsx(modern_fp_preg_1,"/Users/damariskimonge/Dropbox/Dama/Longitudinal/modern_fp_preg_1.xlsx")
 
 class(Baseline$clt_visit)
 Baseline$clt_visit<-as.numeric(as.character(Baseline$clt_visit))
@@ -541,11 +339,7 @@ survival_data<-Baseline%>%
   left_join((kaplan_order), by='record_id')
 
 table(kaplan_order$clt_visit_ord,kaplan_order$fp_use)
-#survival_data_fp<-survival_data%>%
-#filter(fp_use=='1')
 
-library(ggpubr)
-library(survminer)
 
 # Fit survival data using the Kaplan-Meier method
 #1.Outcome variable
@@ -765,8 +559,6 @@ summary(cox_fit_mar)
 
 #Continuation
 #Adjusting for age as a confounder
-# cox_fit_mar_adj <- coxph(surv_mar ~ Marital_relationship+age_enr_cof, data = survival_data_fp)
-# summary(cox_fit_mar_adj)
 cox_fit_mar_adj_clus <- coxph(surv_mar ~ Marital_relationship+age_enr_cof+cluster(Facility), data = survival_data_fp)
 summary(cox_fit_mar_adj_clus)
 
@@ -843,9 +635,7 @@ ggsurvplot(fit_res, data = survival_data_fp,
            ylab="Probability", pval = TRUE, pval.coord = c(7, 1),fontsize=3,
            censor.shape = "O", censor.size = 5)
 
-# class(had_partner_overall$residing_with_partner)
-# had_partner_overall$residing_with_partner<-as.factor(had_partner_overall$residing_with_partner)
-# table(had_partner_overall$residing_with_partner)
+
 table(survival_data_fp$Reside_partner)
 survival_data_fp$Reside_partner <- as.factor(survival_data_fp$Reside_partner)
 survival_data_fp$Reside_partner = relevel(survival_data_fp$Reside_partner, ref = "Yes")
