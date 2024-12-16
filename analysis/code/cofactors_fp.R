@@ -17,16 +17,17 @@ library(readxl)
 library(ggpubr)
 library(survminer)
 
-"C:/Users/integ/OneDrive/New Folder/Github/Cofactors-of-FP-uptake/cofactors_fp.R"
+
+# Loading the datasets -----------------------------------------------------------------------
+
+
 #Loading the datasets
-Baseline<-read_excel("cofactors_baseline.xlsx")
-fpdata_sae_ltfp<-read_excel("fpdata_sae_ltfp.xlsx")
+Baseline<-read_excel("analysis/data/baseline_data.xlsx")
+fpdata_sae_ltfp<-read_excel("analysis/data/survival_analysis.xlsx")
+survival_data_fp_resume<-read_excel("analysis/data/survival_subanalysis.xlsx")
 
-table(fpdata_sae_ltfp$repeat_preg)
-###BEGIN ANALYSIS
-missing_age<-Baseline%>%
-  filter(is.na(age_groups_cof))
 
+# Descriptive analysis ----------------------------------------------------------
 summary(Baseline$age_enr_cof)
 summarytools::freq(Baseline$age_groups_cof)
 summarytools::freq(Baseline$participant_education1)
@@ -36,7 +37,6 @@ summarytools::freq(Baseline$employment_enr_cof)
 summarytools::freq(Baseline$mos_sss_lt72_enr_cof)
 summarytools::freq(Baseline$hits_gt10_enr_cof)
 summarytools::freq(Baseline$phq2_gt3_enr_cof)
-
 summarytools::freq(Baseline$total_anc_attended_visits_gt4_cof)
 summarytools::freq(Baseline$parity)
 ##number of living children
@@ -67,7 +67,7 @@ summary(median_age$real_age)
 summary(Baseline$first_response_time)
 
 
-table(Baseline$pc_current, Baseline$pc_financial)
+table(Baseline$pc_current, Baseline$realpc_financial)
 
 #Family planning methods
 implant <- fpdata_sae_ltfp %>% 
@@ -143,308 +143,10 @@ summarytools::freq(resume$first_resume)
 
 summary(resume$first_resume)
 
-modern_c<-fpdata_sae_ltfp%>%
-  dplyr::select(record_id,clt_visit,modern_fp,sa_resumesex, sa_nonpermbc___7,
-         sa_nonpermbc___8, sa_nonpermbc___9, sa_nonpermbc___10, 
-         sa_nonpermbc___11, sa_nonpermbc___12, sa_nonpermbc___13)
 
-table(modern_c$clt_visit)
-table(modern$first_FP)
 
-#merge datasets
-modernfp_kaplan<-modern_c %>%
-  left_join((modern),by='record_id')
+# Survival analysis -------------------------------------------------------
 
-table(modernfp_kaplan$clt_visit)
-table(modernfp_kaplan$status_FP)
-
-#replace NA in status_FP with zero
-modernfp_kaplan <- modernfp_kaplan %>%
-  mutate(status_FP=ifelse(is.na(status_FP),0,status_FP))
-
-modernfp_kaplan<-modernfp_kaplan %>%
-  mutate(visit=case_when(status_FP==modern_fp~'1',
-                         status_FP!=modern_fp~'0'))
-table(modernfp_kaplan$visit)
-class(modernfp_kaplan$clt_visit)
-table(modernfp_kaplan$clt_visit)
-
-class(modernfp_kaplan$first_FP)
-modernfp_kaplan$clt_visit<-as.numeric(as.character(modernfp_kaplan$clt_visit))
-modernfp_kaplan$first_FP<-as.numeric(as.character(modernfp_kaplan$first_FP))
-
-modernfp_kaplan<-modernfp_kaplan %>%
-  mutate(censored_fp=case_when(status_FP=='1'&modern_fp!='1'~'0',
-                               status_FP=='1'&modern_fp=='1'~'1'))
-
-modernfp_kaplan<-modernfp_kaplan %>%
-  mutate(censored_fp=case_when(status_FP=='1'&modern_fp!='1'~'0',
-                               status_FP=='1'&modern_fp=='1'~'1'))
-
-modernfp_kaplan$visit<-ifelse(modernfp_kaplan$clt_visit==modernfp_kaplan$first_FP,"Yes","No")
-table(modernfp_kaplan$visit)
-
-#create fp use
-modernfp_kaplan <- modernfp_kaplan %>%
-  mutate(fp_use=case_when(censored_fp=='1'& visit=='Yes'~'1',
-                          censored_fp!='1'& visit=='Yes'~'0',
-                          censored_fp!='1'& visit!='Yes'~'0',
-                          censored_fp=='1'& visit!='Yes'~'0'))
-
-#replace na with zero
-modernfp_kaplan <- modernfp_kaplan %>%
-  mutate(fp_use=ifelse(is.na(fp_use),0,fp_use))
-
-table(modernfp_kaplan$clt_visit)
-table(modernfp_kaplan$fp_use)
-class(modernfp_kaplan$fp_use)
-
-##order data
-#change fp_use from character to numeric to be able to order and drop duplicates
-class(modernfp_kaplan$fp_use)
-class(modernfp_kaplan$modern_fp)
-
-
-# kaplan_ord<- modernfp_kaplan[order(modernfp_kaplan[,'record_id'],-modernfp_kaplan[,'fp_use']),]
-kaplan_ord <- modernfp_kaplan %>%
-  arrange(record_id, desc(fp_use))
-table(kaplan_ord $clt_visit)
-kaplan_order<-kaplan_ord[ !duplicated(kaplan_ord$record_id), ]
-table(kaplan_order$clt_visit)
-
-table(kaplan_ord$first_FP,kaplan_ord$fp_use)
-library(survival)
-
-#convert first_FP to numeric
-kaplan_order$first_FP<-as.numeric(kaplan_order$first_FP)
-table(kaplan_order$first_FP)
-
-
-# adding suffix _1 to column names in kaplan_order to make them diffrent
-colnames(kaplan_order) <- paste(colnames(kaplan_order),"ord",sep="_")
-kaplan_order<-kaplan_order%>%
-  rename("record_id"="record_id_ord")
-kaplan_order<-kaplan_order%>%
-  rename("fp_use"="fp_use_ord")
-
-
-### *repeat pregnancy*
-modern_preg<-fpdata%>%
- dplyr:: select(record_id,clt_visit,modern_fp)
-table(modern_c$clt_visit)
-table(modern$first_FP)
-
-#merge datasets
-modernfp_kaplan_preg<-modern_preg %>%
-  left_join((modern),by='record_id')
-
-
-#replace NA in status_FP with zero
-modernfp_kaplan_preg <- modernfp_kaplan_preg %>%
-  mutate(status_FP=ifelse(is.na(status_FP),0,status_FP))
-
-modernfp_kaplan_preg<-modernfp_kaplan_preg %>%
-  mutate(visit=case_when(status_FP==modern_fp~'1',
-                         status_FP!=modern_fp~'0'))
-
-modernfp_kaplan_preg$clt_visit<-as.numeric(as.character(modernfp_kaplan_preg$clt_visit))
-modernfp_kaplan_preg$first_FP<-as.numeric(as.character(modernfp_kaplan_preg$first_FP))
-
-modernfp_kaplan_preg<-modernfp_kaplan_preg %>%
-  mutate(censored_fp=case_when(status_FP=='1'&modern_fp!='1'~'0',
-                               status_FP=='1'&modern_fp=='1'~'1'))
-
-modernfp_kaplan_preg<-modernfp_kaplan_preg %>%
-  mutate(censored_fp=case_when(status_FP=='1'&modern_fp!='1'~'0',
-                               status_FP=='1'&modern_fp=='1'~'1'))
-
-modernfp_kaplan_preg$visit<-ifelse(modernfp_kaplan_preg$clt_visit==modernfp_kaplan_preg$first_FP,"Yes","No")
-
-
-#create fp use
-modernfp_kaplan_preg <- modernfp_kaplan_preg %>%
-  mutate(fp_use=case_when(censored_fp=='1'& visit=='Yes'~'1',
-                          censored_fp!='1'& visit=='Yes'~'0',
-                          censored_fp!='1'& visit!='Yes'~'0',
-                          censored_fp=='1'& visit!='Yes'~'0'))
-
-#replace na with zero
-modernfp_kaplan_preg <- modernfp_kaplan_preg %>%
-  mutate(fp_use=ifelse(is.na(fp_use),0,fp_use))
-
-
-##order data
-kaplan_ord_preg <- modernfp_kaplan_preg %>%
-  arrange(record_id, desc(fp_use))
-kaplan_ord_preg<-kaplan_ord_preg[ !duplicated(kaplan_ord_preg$record_id), ]
-
-#convert first_FP to numeric
-kaplan_ord_preg$first_FP<-as.numeric(kaplan_ord_preg$first_FP)
-
-
-colnames(kaplan_ord_preg) <- paste(colnames(kaplan_ord_preg),"ord",sep="_")
-kaplan_ord_preg<-kaplan_ord_preg%>%
-  rename("record_id"="record_id_ord")
-kaplan_ord_preg<-kaplan_ord_preg%>%
-  rename("fp_use"="fp_use_ord")
-
-
-table(fpdata$repeat_preg)
-
-repeat_preg_1<-fpdata|>
-  dplyr::select(record_id,clt_visit,repeat_preg)|>
-  filter(repeat_preg==1)|>
-  rename(clt_visit_preg=clt_visit)
-
-summarytools::freq(repeat_preg_1$repeat_preg)
-
-modern_fp_1<-kaplan_ord_preg|>
-  dplyr::select(record_id,first_FP_ord,fp_use)
-
-
-
-modern_fp_preg<-modern_fp_1|>left_join(repeat_preg_1, by=c("record_id"))|>
-  mutate(fp_preg=case_when(fp_use=="1"&repeat_preg=="1"~"1",
-                           fp_use=="1"&repeat_preg=="0"~"0",
-                           fp_use=="0"&repeat_preg=="1"~"0",
-                           fp_use=="0"&repeat_preg=="0"~"0"))
-summarytools::freq(modern_fp_preg$repeat_preg)
-summarytools::freq(modern_fp_preg$first_FP_ord)
-summarytools::freq(modern_fp_preg$fp_preg)
-
-modern_fp_preg_1<-modern_fp_preg|>
-  filter(fp_preg=="1")
-duplicated_fp_reg <- modern_fp_preg_1[duplicated(modern_fp_preg_1$record_id), ]
-
-###person time
-survival_data_fp_time<-survival_data_fp|>
-  dplyr::select(record_id, visit1)
-table(survival_data_fp_time$visit1)
-survival_data_fp_time$visit1<-as.numeric(survival_data_fp_time$visit1)
-
-
-b<-sum(survival_data_fp_time$visit1)
-
-###check if time pregnant is later than time reported fp use
-
-preg_fp_check<-nancy_prima_longitudinal_071122|>
-  filter(record_id==13747057309)|>
-  dplyr::select(record_id,redcap_event_name,io_secondpreg,modern_fp)
-
-
-class(Baseline$clt_visit)
-Baseline$clt_visit<-as.numeric(as.character(Baseline$clt_visit))
-
-survival_data<-Baseline%>%
-  left_join((kaplan_order), by='record_id')
-
-table(kaplan_order$clt_visit_ord,kaplan_order$fp_use)
-
-
-# Fit survival data using the Kaplan-Meier method
-#1.Outcome variable
-#rename clt_visit.y to Visit
-survival_data_fp<-survival_data%>%
-  rename("visit_clean"="clt_visit_ord")
-table(survival_data_fp$visit_clean)
-
-table(survival_data_fp$repeat_preg)
-glimpse(survival_data_fp)
-#recode
-survival_data_fp$visit_clean<-as.factor(survival_data_fp$visit_clean)
-survival_data_fp<-survival_data_fp%>%
-  mutate(visit1=recode(visit_clean,
-                       "101"="6",
-                       "102"="14",
-                       "103"="24",
-                       "104"="36"))
-table(survival_data_fp$visit1)
-table(survival_data_fp$visit_clean)
-class(survival_data_fp$visit1)
-class(survival_data_fp$fp_use)
-
-
-#visit 6 censoring
-table(survival_data_fp$visit1,survival_data_fp$fp_use)
-survival_data_fp$visit1 <- as.factor(survival_data_fp$visit1)
-survival_data_fp$visit1[survival_data_fp$record_id %in% c(13476002909,13608172409,13608172809,13608173209,13653213009,
-                                                          13668252109,13668261209,13668267409,13747062709,13953517409,
-                                                          13953519909,14022609509,14022613609,14022619309,14022623709,
-                                                          14036668509,14036673609,14063720309,14063720509,14080771709,
-                                                          14130800509,14164854709,14164856109,14164856409,14164856809,
-                                                          14164861809,14164864609,14165905109,14175970609)& survival_data_fp$fp_use == 0] <- 6
-
-table(survival_data_fp$visit1,survival_data_fp$fp_use)
-
-#week14 censoring
-survival_data_fp$visit1[survival_data_fp$record_id %in% c(13507107409,13608171509,13608173309,13608174709,13608174809,
-                                                          13608175009,13747052209,13747069009,13841470309,13953518409,
-                                                          14022609609,14022622709,14022623009,14036654809,14036671809,
-                                                          14036673009,14036674509,14063715009,14063715309,14063719909,
-                                                          14063720809,14063721009,14063721209,14063721309,14080769409,
-                                                          14130800109,14164850809,14164855009,14164856309,14164857009,
-                                                          14164867609,14175970209,14175971209)& survival_data_fp$fp_use == 0] <- 14
-table(survival_data_fp$visit1,survival_data_fp$fp_use)
-
-
-#month6 censoring
-survival_data_fp$visit1[survival_data_fp$record_id %in% c(13507122909,13608168309,13608171409,13608172209,13608172609,
-                                                          13608174109,13668262909,13668268109,13668270209,13668270509,
-                                                          13668270809,13668272709,13668272809,13668273709,13760307809,
-                                                          13760311409,13798412809,13798415209,13841470509,13987563809,
-                                                          13987568409,13987572609,14022623409,14036670509,14036671709,
-                                                          14036672209,14036672709,14063719509,14063719709,14080759809,
-                                                          14080761009,14130804209,14164857809,14164859109,14164870209,
-                                                          14175961209,14175966609,14175969609,14175970309,14175972209)& survival_data_fp$fp_use == 0] <- 24
-
-table(survival_data_fp$visit1,survival_data_fp$fp_use)
-
-
-#fp non-modern methods by visit
-table(survival_data_fp$visit1,survival_data_fp$sa_nonpermbc___7_ord)#Abstinence
-table(survival_data_fp$visit1,survival_data_fp$sa_nonpermbc___8_ord) #lactation (lactational amenorrhea method;LAM)
-table(survival_data_fp$visit1,survival_data_fp$sa_nonpermbc___9_ord)#Herbal methods
-table(survival_data_fp$visit1,survival_data_fp$sa_nonpermbc___10_ord)#Standard days method (periodic abstinence)
-table(survival_data_fp$visit1,survival_data_fp$sa_nonpermbc___11_ord)#Withdrawal
-table(survival_data_fp$visit1,survival_data_fp$sa_nonpermbc___12_ord)#Rhythm/calendar method
-table(survival_data_fp$visit1,survival_data_fp$sa_nonpermbc___13_ord)#Emergency contraception
-
-
-##replace 0 (enrolment) values in visit1 with 36 so as to censor at month9
-#participants who came for all the visits but did not initiate fp use
-table(survival_data_fp$visit1)
-survival_data_fp$visit1[survival_data_fp$visit1 == 0] <- 36
-table(survival_data_fp$visit1,survival_data_fp$fp_use)
-table(survival_data_fp$fp_use)
-
-table(survival_data_fp$Facility)
-
-summary(survival_data_fp$visit1)
-
-###median time test
-fp_resume<-survival_data_fp|>
-  select(record_id,first_response_time,fp_use,visit1,sa_resume_time)|>
-  mutate(visit2=visit1)|>
-  filter(!is.na(first_response_time))
-fp_resume$visit2<-as.numeric(as.character(fp_resume$visit2))
-summary(fp_resume$visit2)
-
-fp_resume_1<-fp_resume|>
-  filter(fp_use=="1")
-
-
-table(fp_resume$visit2,fp_resume$fp_use)
-
-summarytools::freq(fp_resume_1$visit2)
-
-table(survival_data_fp$first_response_time)
-
-summarytools::freq(survival_data_fp$fp_use)
-
-
-
-#K-M and cox regression analysis
-table(survival_data_fp$visit1)
 survival_data_fp$visit1<-as.numeric(as.character(survival_data_fp$visit1))
 survival_data_fp$fp_use<-as.numeric(as.character(survival_data_fp$fp_use))
 surv_fp1<- Surv(survival_data_fp$visit1,survival_data_fp$fp_use)
@@ -454,8 +156,6 @@ fp1 <- survfit(surv_fp1 ~ 1, data = survival_data_fp)
 summary(fp1)
 #survival_data_fp2<-data.frame(survival_data_fp2)
 #plot
-survival_data_fp_cens<-survival_data_fp%>%
-  filter(record_id=='14175970609')
 
 ggsurvplot(fp1, data = survival_data_fp,
            tables.y.text = FALSE,
@@ -1408,13 +1108,13 @@ cox_fit_fin_adj_clus <- coxph(surv_fin ~ Financial_support+age_enr_cof+cluster(F
 summary(cox_fit_fin_adj_clus)
 
 
-# subanalysis among pregnant women who resumed sex
+# Survival sub-analysis of pregnant women who resumed sex ---------------------------------------------------
 
-##### Testing for difference in median time to resumption and fp initiation
+## Testing for difference in median time to resumption and fp initiation
+
 clean_revised_resume_sex<- fpdata_sae_ltfp %>% 
   filter(sa_resumesex=="1")
 table(clean_revised_resume_sex$sa_resumesex)
-
 
 fp_resume<-survival_data_fp|>
   select(record_id,first_response_time,visit1,sa_resume_time)|>
@@ -1426,131 +1126,7 @@ summary(fp_resume$visit2)
 kruskal.test(fp_resume$first_response_time,fp_resume$visit2)
 
 
-
-survival_data_resume_join<-survival_data_fp|>
-  select(-c(sa_resume_time,first_response_time))
-
-fp_resume_surv<-fp_resume|>
-  left_join(survival_data_resume_join, by="record_id")|>
-  mutate(visit_resume=recode(sa_resume_time,
-                             "6 weeks"="6","14 weeks"="14", "24 weeks"="24", "36 weeks"="36"))|>
-  mutate(visit_resume=as.numeric(as.character(visit_resume)))
-
-table(fp_resume_surv$fp_use,fp_resume_surv$sa_resume_time)
-table(fp_resume_surv$visit_resume,fp_resume_surv$sa_resume_time)
-
-dim(fp_resume_surv)
 ###
-
-
-#####RESUME SEX
-
-resume_sub<-resume%>%
-  mutate(resume_sex_indicator="resume sex")
-
-resume_sub<-resume_sub%>%
-  rename(clt_visit=first_resume)
-
-sex_resumption <- resume_sub %>% 
-  left_join(Baseline, by='record_id')
-
-# adding suffix _ord
-colnames(kaplan_ord) <- paste(colnames(kaplan_ord),"ord",sep="_")
-kaplan_ord<-kaplan_ord%>%
-  rename(record_id=record_id_ord)
-
-survival_resume <-sex_resumption%>% 
-  left_join(kaplan_order,by ='record_id')
-
-table(survival_resume$sa_resumesex_ord)
-table(survival_resume$pc_current)
-
-# Fit survival data using the Kaplan-Meier method
-#1.Outcome variable
-#rename clt_visit.y to Visit
-survival_resume_fp<-survival_resume%>%
-  rename("visit_clean"="clt_visit_ord")
-
-glimpse(survival_data_fp)
-#recode
-survival_resume_fp$visit_clean<-as.factor(survival_resume_fp$visit_clean)
-survival_resume_fp<-survival_resume_fp%>%
-  mutate(visit1=recode(visit_clean,
-                       "101"="6",
-                       "102"="14",
-                       "103"="24",
-                       "104"="36"))
-class(survival_resume_fp$visit1)
-
-class(survival_resume_fp$fp_use)
-
-#visit 6 censoring
-table(survival_resume_fp$visit1,survival_resume_fp$fp_use)
-survival_resume_fp$visit1[survival_resume_fp$record_id %in% c(13476002909,13608172409,13608172809,13608173209,13653213009,
-                                                              13668252109,13668261209,13668267409,13747062709,13953517409,
-                                                              13953519909,14022609509,14022613609,14022619309,14022623709,
-                                                              14036668509,14036673609,14063720309,14063720509,14080771709,
-                                                              14130800509,14164854709,14164856109,14164856409,14164856809,
-                                                              14164861809,14164864609,14165905109,14175970609)& survival_resume_fp$fp_use == 0] <- 6
-table(survival_resume_fp$visit1,survival_resume_fp$fp_use)
-table(survival_resume_fp$sa_resumesex_ord)
-
-#week14 censoring
-survival_resume_fp$visit1[survival_resume_fp$record_id %in% c(13507107409,13608171509,13608173309,13608174709,13608174809,
-                                                              13608175009,13747052209,13747069009,13841470309,13953518409,
-                                                              14022609609,14022622709,14022623009,14036654809,14036671809,
-                                                              14036673009,14036674509,14063715009,14063715309,14063719909,
-                                                              14063720809,14063721009,14063721209,14063721309,14080769409,
-                                                              14130800109,14164850809,14164855009,14164856309,14164857009,
-                                                              14164867609,14175970209,14175971209)& survival_resume_fp$fp_use == 0] <- 14
-table(survival_resume_fp$visit1,survival_resume_fp$fp_use)
-
-#month6 censoring
-survival_resume_fp$visit1[survival_resume_fp$record_id %in% c(13507122909,13608168309,13608171409,13608172209,13608172609,
-                                                              13608174109,13668262909,13668268109,13668270209,13668270509,
-                                                              13668270809,13668272709,13668272809,13668273709,13760307809,
-                                                              13760311409,13798412809,13798415209,13841470509,13987563809,
-                                                              13987568409,13987572609,14022623409,14036670509,14036671709,
-                                                              14036672209,14036672709,14063719509,14063719709,14080759809,
-                                                              14080761009,14130804209,14164857809,14164859109,14164870209,
-                                                              14175961209,14175966609,14175969609,14175970309,14175972209)& survival_resume_fp$fp_use == 0] <- 24
-
-table(survival_resume_fp$visit1,survival_resume_fp$fp_use)
-
-##replace 0 (enrolment) values in visit1 with 36 so as to censor at month9
-#participants who came for all the visits but did not initiate fp use
-table(survival_resume_fp$visit1)
-survival_resume_fp$visit1[survival_resume_fp$visit1 == 0] <- 36
-table(survival_resume_fp$visit1,survival_resume_fp$fp_use)
-table(survival_resume_fp$fp_use)
-
-table(survival_resume_fp$Facility)
-
-
-#K-M and cox regression analysis
-table(survival_resume_fp$visit1)
-class(survival_resume_fp$visit1)
-survival_resume_fp$visit1<-as.numeric(as.character(survival_resume_fp$visit1))
-survival_resume_fp$fp_use<-as.numeric(as.character(survival_resume_fp$fp_use))
-surv_fp_resume<- Surv(survival_resume_fp$visit1,survival_resume_fp$fp_use)
-surv_fp_resume
-#summary
-fp_resume <- survfit(surv_fp_resume ~ 1, data = survival_resume_fp)
-summary(fp_resume)
-
-table(survival_resume_fp$resume_sex_indicator)
-table(survival_resume_fp$pc_current)
-table(survival_resume_fp$pc_current,survival_resume_fp$resume_sex_indicator)
-
-table(survival_resume_fp$sa_resumesex_ord,survival_resume_fp$fp_use)
-
-survival_data_fp_resume=survival_resume_fp
-#KM and cox regression analysis
-survival_data_fp_resume<-survival_data_fp_resume%>%
-  rename(fp_use_resume=fp_use)
-survival_data_fp_resume<-survival_data_fp_resume%>%
-  rename(visit1_resume=visit1)
-table(survival_data_fp_resume$fp_use_resume)
 
 table(survival_data_fp_resume$visit1_resume)
 survival_data_fp_resume$visit1_resume<-as.numeric(as.character(survival_data_fp_resume$visit1_resume))
@@ -2567,12 +2143,7 @@ summary(cox_fit_fin_resume_adj_clus)
 ################ *END OF SUB-ANALYSIS*
 
 
-##Forest plot
-# Load necessary libraries
-# Load necessary libraries
-
-
-# Prepare the data
+# Forest plots -------------------------------------------------------------------
 
 data <- data.frame(
   Group = c(
